@@ -9,6 +9,7 @@ TagManager:
   - motion_model
   - rope
   - Wall
+  - CheckPoint
   layers:
   - Default
   - TransparentFX

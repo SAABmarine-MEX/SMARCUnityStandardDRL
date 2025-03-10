@@ -22,21 +22,14 @@ using Unity.MLAgents.Sensors;
 
 namespace DefaultNamespace
 {
-    public class BrovAgentController : Agent
+    public class BrovAgentControllerReal : Agent
     {
 		// DRL stuff
 		Vector<double> vel_vec;// input to model
         Vector3 inputForce = Vector3.zero;
         Vector3 inputTorque = Vector3.zero;
-        // This list will hold the positions of all direct children of "Gates"
-    	private List<Vector3> gatePositions = new List<Vector3>();
-		private List<Vector3> next2Gates = new List<Vector3>() { Vector3.zero, Vector3.zero }; // TODO: make this to be a set length of 2, array instead of list maybe?
-		private int iNextGate = 1;
-
-		// DRL training parameters
-		private float gamma = 0.99f;
-		private float epsilon = 0.2f;
-		private float lambda1 = 1f, lambda2 = 0.02f, lambda3 = -10f, lambda4 = -2e-4f, lambda5 = -1e-4f;
+        private Vector3 lastPosition;
+        private Vector3 lastRotation;
 
         public ArticulationBody mainBody;
         public ArticulationBody prop_top_back_right;
@@ -146,26 +139,7 @@ namespace DefaultNamespace
         {
             print("Init");
             //mainBody = GameObject.Find("Agent-BROV2").GetComponent<ArticulationBody>();
-
-			GameObject gates = GameObject.Find("Gates");
-			if (gates != null)
-			{
-    			// Iterate over direct children of Gates. They are already sorted from Unity scene, i.e first child is first gate, second is second etc.
-    			foreach (Transform child in gates.transform)
-    			{
-        			Debug.Log("Found child: " + child.gameObject.name);
-					Debug.Log("Child's position: " + child.localPosition);
-					gatePositions.Add(child.localPosition);
-        			// You can also access the child object:
-        			GameObject childObject = child.gameObject;
-    }
-	Debug.Log("tot n:" + gatePositions.Count);
-	
-}
-else
-{
-    Debug.LogError("Gates object not found!");
-}
+            
 		/*
 		Transform checkpointsTransform = transform.Find("Checkpoints");
 		print("CHECKISAR");
@@ -193,7 +167,7 @@ else
 			//mainBody.transform.position = new Vector3(-1.5f, -1f, -0.8f);
         	//mainBody.anchorPosition = new Vector3(-1.5f, -1f, -0.8f);
 			Vector3 localPosition = new Vector3(-1.5f, -1f, -0.8f);
-			Quaternion localRotation = Quaternion.Euler(0, -90, 0);
+			Quaternion loaclRotation = Quaternion.Euler(0, -90, 0);
 
 			// Convert to world-space using the parent's transform
 			Transform parentTransform = transform.parent;
@@ -201,18 +175,11 @@ else
 			Vector3 worldPosition = parentTransform.TransformPoint(localPosition);
 			//Quaternion worldRotation = parentTransform.rotation * localRotation;
 
-			mainBody.TeleportRoot(worldPosition, localRotation); // TODO: ska det inte vara localPosition??
+			mainBody.TeleportRoot(worldPosition, loaclRotation);
 			Debug.Log(mainBody.transform.position);
 			
 			// TODO: add so it is not moving in the begining
 			
-            // To make sure they are not the same position
-            // while the same -> generate new positions
-
-			// Reset next gate positions
-			next2Gates[0] = gatePositions[0];
-			next2Gates[1] = gatePositions[1];
-			iNextGate = 1;
         }
 
         
@@ -554,31 +521,42 @@ else
         // Sensor/perception input for the agent
         public override void CollectObservations(VectorSensor sensor)
         {
-            //sensor.AddObservation(transform.localPosition);  	// Agent's position
-			//sensor.AddObservation(next2Gates[0]); 				// Next gate
-			//sensor.AddObservation(next2Gates[1]); 				// Second next gate
-
-			sensor.AddObservation(transform.localRotation); // Orientation quaternion
-			// Velocities
-			Vector<float> vel_vec_float = Vector<float>.Build.Dense(vel_vec.Count, i => (float)vel_vec[i]); // TODO: fix so dont need to convert
-			sensor.AddObservation(vel_vec_float);
-			Vector3 relVec2Gate1 = next2Gates[0] - transform.localPosition;
-			Vector3 relVec2Gate2 = next2Gates[1] - transform.localPosition;
-			sensor.AddObservation(relVec2Gate1); // Relative vector to next gate
-			sensor.AddObservation(relVec2Gate2); // Relative vector to second next gate
-
-
-			/*Reward stuff
-				// TODO: have gates as Transform data type to be able to get alignment
-		// Distance to next gate
-        Vector3 directionToGate = nextGate.position - transform.position;
-        float distanceToGate = directionToGate.magnitude;
-
-        // Camera alignment (angle between drone forward direction and gate)
-        float alignment = Vector3.Dot(transform.forward, directionToGate.normalized);
+	        /* Used for drl trainging
+				sensor.AddObservation(transform.localRotation); // Orientation quaternion
+	           // Velocities
+	           Vector<float> vel_vec_float = Vector<float>.Build.Dense(vel_vec.Count, i => (float)vel_vec[i]); // TODO: fix so dont need to convert
+	           sensor.AddObservation(vel_vec_float);
+	           Vector3 relVec2Gate1 = next2Gates[0] - transform.localPosition;
+	           Vector3 relVec2Gate2 = next2Gates[1] - transform.localPosition;
+	           sensor.AddObservation(relVec2Gate1); // Relative vector to next gate
+	           sensor.AddObservation(relVec2Gate2); // Relative vector to second next gate
 			*/
-        }
+	        // --- Agent's position and rotation ---
+	        Vector3 currentPosition = transform.localPosition;
+	        Vector3 currentRotation = transform.localRotation.eulerAngles;
+	        sensor.AddObservation(currentPosition);
+	        sensor.AddObservation(currentRotation);
 
+	        // --- Linear Velocity ---
+	        Vector3 deltaPosition = currentPosition - lastPosition;
+	        Vector3 estimatedVelocity = deltaPosition / Time.fixedDeltaTime;
+	        sensor.AddObservation(estimatedVelocity);
+
+	        // --- Angular Velocity in Euler Angles (deg/s) ---
+	        // Calculate the change in rotation for each axis using DeltaAngle to account for wrap-around
+	        float deltaX = Mathf.DeltaAngle(lastRotation.x, currentRotation.x);
+	        float deltaY = Mathf.DeltaAngle(lastRotation.y, currentRotation.y);
+	        float deltaZ = Mathf.DeltaAngle(lastRotation.z, currentRotation.z);        
+	        // Compute the angular velocity in degrees per second
+	        Vector3 angularVelocity = new Vector3(deltaX, deltaY, deltaZ) / Time.fixedDeltaTime;
+	        // Add the angular velocity as an observation
+	        sensor.AddObservation(angularVelocity);
+        
+	        // Update for next frame
+	        lastPosition = currentPosition;
+	        lastRotation = currentRotation;
+        }
+        
         // What actions the agent can preform
         public override void OnActionReceived(ActionBuffers actions)
         {
@@ -629,7 +607,7 @@ else
 			
 			// TODO: added the scaled actions below instead
 			// TODO: why does this change the movement speed???
-            inputForce  = new Vector3(actions.ContinuousActions[0], actions.ContinuousActions[1], actions.ContinuousActions[2]);
+            inputForce  = new Vector3(actions.ContinuousActions[0], actions.ContinuousActions[1], actions.ContinuousActions[2]*0.5f); // 0.5 less force in x for simple res dyn test
             inputTorque = new Vector3(actions.ContinuousActions[3], actions.ContinuousActions[4], actions.ContinuousActions[5]);
             
             //float moveRotate = actions.ContinuousActions[0]; // X-axis rotation -1 - +1
@@ -715,38 +693,6 @@ else
         }
 		// TODOS: 3. inför reward system varje check point (se videon för det)
         // Collision handeling, and rewards
-        private void OnTriggerEnter(Collider other)
-        {
-			// Try to get the CheckpointData component from the collider.
-    		CheckpointSingle cpData = other.GetComponent<CheckpointSingle>();
-    		if (cpData != null)
-    		{
-				Debug.Log("CHECKPOINT INDEX: " + cpData.checkpointIndex);
-				Debug.Log("CORRECT INDEX: " + iNextGate);
-        		// Optionally, verify the checkpoint order.
-        		if (cpData.checkpointIndex == iNextGate)
-        		{
-				Debug.Log("RÄTT ORDNING");
-                AddReward(10f);
-				// Move to the next gate TODO: test if this logic works
-				// TODO: make sure they are in order
-				iNextGate = (iNextGate + 1) % (gatePositions.Count+1); // TODO: remake so gate numbers starts from 0 instead of 1. then gatePos.count+1 not needed, only gatePos.count
-				if (iNextGate == 0) { iNextGate = 1; } // Restart. TODO: modulus. GÖR SÅ DOM STARTAR PÅ 0! SLIPPER DENNA OCH PLUS 1 PÅ COUNT!
-				
-				next2Gates[0] = next2Gates[1];
-				next2Gates[1] = gatePositions[iNextGate];
-            	}else{
-				// TODO: fix so that it doesnt give this multiple times when passing through
-				// Wrong order!
-				Debug.Log("FEL ORDNING");
-				AddReward(-1f);
-				}
-			}
-            if (other.gameObject.tag == "Wall")
-            {
-                AddReward(-5f);
-                EndEpisode();
-            }
-        }
+        
     }
 }

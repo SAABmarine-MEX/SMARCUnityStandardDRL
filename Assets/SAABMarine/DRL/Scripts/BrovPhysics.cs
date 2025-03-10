@@ -22,22 +22,8 @@ using Unity.MLAgents.Sensors;
 
 namespace DefaultNamespace
 {
-    public class BrovAgentController : Agent
+    public class BrovPhysics : MonoBehaviour
     {
-		// DRL stuff
-		Vector<double> vel_vec;// input to model
-        Vector3 inputForce = Vector3.zero;
-        Vector3 inputTorque = Vector3.zero;
-        // This list will hold the positions of all direct children of "Gates"
-    	private List<Vector3> gatePositions = new List<Vector3>();
-		private List<Vector3> next2Gates = new List<Vector3>() { Vector3.zero, Vector3.zero }; // TODO: make this to be a set length of 2, array instead of list maybe?
-		private int iNextGate = 1;
-
-		// DRL training parameters
-		private float gamma = 0.99f;
-		private float epsilon = 0.2f;
-		private float lambda1 = 1f, lambda2 = 0.02f, lambda3 = -10f, lambda4 = -2e-4f, lambda5 = -1e-4f;
-
         public ArticulationBody mainBody;
         public ArticulationBody prop_top_back_right;
         public ArticulationBody prop_top_front_right;
@@ -107,6 +93,18 @@ namespace DefaultNamespace
         double I_x = 0.2818; // [kg*m^2], from OSBS's CAD
         double I_y = 0.245; // [kg*m^2], from OSBS's CAD
         double I_z = 0.3852; // [kg*m^2], from OSBS's CAD
+
+        Vector3 inputForce = Vector3.zero;
+        Vector3 inputTorque = Vector3.zero;
+
+        // Maybe not the best to have these globally but the purpose is to easily get the velocities to Agent class
+        float u;
+        float v;
+        float w;
+        float p;
+        float q;
+        float r;
+
         void Start()
         {
             // Get all propeller components
@@ -141,81 +139,39 @@ namespace DefaultNamespace
             W = m * g; // weight
             B = rho*g*nabla; // The buoyancy in [N] given by OSBS
         }
-        
-        public override void Initialize()
+        public Vector<float> GetVelocity()
         {
-            print("Init");
-            //mainBody = GameObject.Find("Agent-BROV2").GetComponent<ArticulationBody>();
-
-			GameObject gates = GameObject.Find("Gates");
-			if (gates != null)
-			{
-    			// Iterate over direct children of Gates. They are already sorted from Unity scene, i.e first child is first gate, second is second etc.
-    			foreach (Transform child in gates.transform)
-    			{
-        			Debug.Log("Found child: " + child.gameObject.name);
-					Debug.Log("Child's position: " + child.localPosition);
-					gatePositions.Add(child.localPosition);
-        			// You can also access the child object:
-        			GameObject childObject = child.gameObject;
-    }
-	Debug.Log("tot n:" + gatePositions.Count);
-	
-}
-else
-{
-    Debug.LogError("Gates object not found!");
-}
-		/*
-		Transform checkpointsTransform = transform.Find("Checkpoints");
-		print("CHECKISAR");
-        foreach (Transform checkpointSingleTransform in checkpointsTransform)
-        { 
-            Debug.Log(checkpointSingleTransform.name);
-           	//checkpoints.Add(checkpointSingleTransform);
-            
+            return Vector<float>.Build.DenseOfArray(new float[] { u, v, w, p, q, r });
         }
-		*/
-
-        }
-        public override void OnEpisodeBegin()
+        public Vector3 GetLocalPos()
         {
-            print("New Episode");
+            return transform.localPosition;
+        }
+        public Quaternion GetLocalRot()
+        {
+            return transform.localRotation;
+        }
+        public Vector3 GetForwardUnitVec() { return transform.forward; }
 
-            // Agent's starting position for the track
-            //transform.localPosition = new Vector3(-1.5f, -1f, -0.8f);
-			//mainBody.transform.localPosition = new Vector3(-1.5f, -1f, -0.8f);
-            Quaternion q = Quaternion.Euler(0f, 90f, 0f);
-            //transform.localRotation = q;
-			//mainBody.transform.localRotation = q;
-            //mainBody.linearVelocity = Vector3.zero;
-            //mainBody.angularVelocity = Vector3.zero;
-			//mainBody.transform.position = new Vector3(-1.5f, -1f, -0.8f);
-        	//mainBody.anchorPosition = new Vector3(-1.5f, -1f, -0.8f);
-			Vector3 localPosition = new Vector3(-1.5f, -1f, -0.8f);
-			Quaternion localRotation = Quaternion.Euler(0, -90, 0);
-
-			// Convert to world-space using the parent's transform
-			Transform parentTransform = transform.parent;
-
-			Vector3 worldPosition = parentTransform.TransformPoint(localPosition);
-			//Quaternion worldRotation = parentTransform.rotation * localRotation;
-
-			mainBody.TeleportRoot(worldPosition, localRotation); // TODO: ska det inte vara localPosition??
-			Debug.Log(mainBody.transform.position);
-			
-			// TODO: add so it is not moving in the begining
-			
-            // To make sure they are not the same position
-            // while the same -> generate new positions
-
-			// Reset next gate positions
-			next2Gates[0] = gatePositions[0];
-			next2Gates[1] = gatePositions[1];
-			iNextGate = 1;
+        public void SetInput(Vector3 force, Vector3 torque)
+        {
+            inputForce += force;
+            inputTorque += torque;
         }
 
+        public void SetPosAndRot(Vector3 localPosition, Quaternion localRotation)
+        {
+            // Convert to world-space using the parent's transform
+            Transform parentTransform = transform.parent;
+
+            Vector3 worldPosition = parentTransform.TransformPoint(localPosition);
+            //Quaternion worldRotation = parentTransform.rotation * localRotation;
+
+            mainBody.TeleportRoot(worldPosition, localRotation); // TODO: gör detta till metod i Physics scriptet
+            // TODO: add so it is not moving in the begining
+        }
         
+
         void FixedUpdate()
         {
             // Get world rotation
@@ -231,19 +187,19 @@ else
             float phi = (float) (Mathf.Deg2Rad * phiThetaTau[0]); 
             float theta = (float) (Mathf.Deg2Rad* phiThetaTau[1]);
             var uvw = inverseTransformDirection.To<NED>().ToDense(); // Might need to revisit. Rel. velocity in point m block.
-            float u = (float) uvw[0];
-            float v = (float) uvw[1];
-            float w = (float) uvw[2];
+            u = (float) uvw[0];
+            v = (float) uvw[1];
+            w = (float) uvw[2];
             var pqr = FRD.ConvertAngularVelocityFromRUF(transformAngularVelocity).ToDense(); // FRD is same as NED for ANGLES ONLY
-            float p = (float) pqr[0];
-            float q = (float) pqr[1];
-            float r = (float) pqr[2];
+            p = (float) pqr[0];
+            q = (float) pqr[1];
+            r = (float) pqr[2];
             
             // print(uvw[0]+","+uvw[1]+","+uvw[2]);
             // print(pqr[0]+","+pqr[1]+","+pqr[2]);    
         
             // State vector
-            vel_vec = Vector<double>.Build.DenseOfArray(new double[] { u, v, w, p, q, r });
+            Vector<double> vel_vec = Vector<double>.Build.DenseOfArray(new double[] { u, v, w, p, q, r });
            
             // Rigid body and added mass matrices
             // Matrix<double> M_RB = DenseMatrix.OfDiagonalArray(new double[] {m, m, m, I_x, I_y, I_z});
@@ -382,7 +338,6 @@ else
             
             var ROSForces = T * F_vec;
             
-            // print(F_vec[0]+","+F_vec[1]+","+F_vec[2]+","+F_vec[3]+","+F_vec[4]+","+F_vec[5]+","+F_vec[6]+","+F_vec[7]);    
             // if (Arusub_prep)
             // {
             //     Matrix<double> T_hat_inv = DenseMatrix.OfArray(new double[,]
@@ -487,7 +442,6 @@ else
             }
             
             // ADDED MASS
-			//print(inputForce);
             var input_forces = inputForce.To<NED>().ToDense(); // Might need to revisit. Rel. velocity in point m block.
             var input_torques = FRD.ConvertAngularVelocityFromRUF(inputTorque).ToDense(); // FRD is same as NED for ANGLES ONLY (Negative since inputs are right handed )       
             var reactive_force_sum = (-g_vec - tau_sum_damping - tau_sum_coriolis);
@@ -505,7 +459,6 @@ else
                 2.7397,
                 1.6892
             });
-            //print(input_forces_sum[0]+","+input_forces_sum[1]+","+input_forces_sum[2]+","+input_forces_sum[3]+","+input_forces_sum[4]+","+input_forces_sum[5]);    
 
             var vel_vec_dot = M_inv*total_force_sum;
             var added_inertia = M_A * vel_vec_dot;
@@ -543,210 +496,10 @@ else
                 double force = -140.3*math.pow(V,9)+389.9*math.pow(V,7)-404.1*math.pow(V,5)+176.0*math.pow(V,3)+8.9*V;
                 return force;
             }
-
+            
 			// Reset input forces every fixed update
             inputForce = Vector3.zero;
             inputTorque = Vector3.zero;
-        }
-        
-        // DRL methods
-        
-        // Sensor/perception input for the agent
-        public override void CollectObservations(VectorSensor sensor)
-        {
-            //sensor.AddObservation(transform.localPosition);  	// Agent's position
-			//sensor.AddObservation(next2Gates[0]); 				// Next gate
-			//sensor.AddObservation(next2Gates[1]); 				// Second next gate
-
-			sensor.AddObservation(transform.localRotation); // Orientation quaternion
-			// Velocities
-			Vector<float> vel_vec_float = Vector<float>.Build.Dense(vel_vec.Count, i => (float)vel_vec[i]); // TODO: fix so dont need to convert
-			sensor.AddObservation(vel_vec_float);
-			Vector3 relVec2Gate1 = next2Gates[0] - transform.localPosition;
-			Vector3 relVec2Gate2 = next2Gates[1] - transform.localPosition;
-			sensor.AddObservation(relVec2Gate1); // Relative vector to next gate
-			sensor.AddObservation(relVec2Gate2); // Relative vector to second next gate
-
-
-			/*Reward stuff
-				// TODO: have gates as Transform data type to be able to get alignment
-		// Distance to next gate
-        Vector3 directionToGate = nextGate.position - transform.position;
-        float distanceToGate = directionToGate.magnitude;
-
-        // Camera alignment (angle between drone forward direction and gate)
-        float alignment = Vector3.Dot(transform.forward, directionToGate.normalized);
-			*/
-        }
-
-        // What actions the agent can preform
-        public override void OnActionReceived(ActionBuffers actions)
-        {
-			// TODO: the input will be norm between -1 and 1. how to scale it correctly??
-			 //TODO: what is min and max forces for each dof?? put some arbatrary for now
-			// Get the normalized continuous actions (values in [-1, 1])
-    		
-			// x,y,z noted with irl coord sys
-			float forceYNorm = actions.ContinuousActions[0];
-			float forceZNorm = actions.ContinuousActions[1];
-			float forceXNorm = actions.ContinuousActions[2];
-
-			float torquePitchNorm = actions.ContinuousActions[3];
-			float torqueYawNorm = actions.ContinuousActions[4];
-			float torqueRollNorm = actions.ContinuousActions[5];
-		
-
-			// min max values for each dof
-			int numActions = actions.ContinuousActions.Length;
-			// min max ranges for each dof
-			Vector2[] ranges = new Vector2[numActions];
-			// TODO: add scaling given the Heuristic input values
-			ranges[0] = new Vector2(-90f, 90f); // y
-			ranges[1] = new Vector2(-50f, 50f); // z
-			ranges[2] = new Vector2(-100f, 100f); // x
-			ranges[3] = new Vector2(-30f, 30f); // pitch
-			ranges[4] = new Vector2(-45f, 45f); // yaw
-			ranges[5] = new Vector2(-60f, 60f); // roll
-
-			// Create an array to hold the scaled values
-			float[] scaledActions = new float[numActions];
-			// Loop over 
-			// Scale each continuous action using its specific range.
-			for (int i = 0; i < numActions; i++)
-			{
-    			float normalizedAction = actions.ContinuousActions[i]; // should be in [-1, 1]
-    			scaledActions[i] = ((normalizedAction + 1f) / 2f) * (ranges[i].y - ranges[i].x) + ranges[i].x;
-			}
-			//inputForce  = new Vector3(scaledActions[0], scaledActions[1], scaledActions[2]);
-		    //inputTorque = new Vector3(scaledActions[3], scaledActions[4], scaledActions[5]);
-
-
-    // Suppose you want to map [-1, 1] to [minValue, maxValue]
-	// TODO: do this for each dof
-    float minValue = -90f;
-    float maxValue = 90f;
-    float scaledAction = ((forceXNorm + 1f) / 2f) * (maxValue - minValue) + minValue;
-			
-			// TODO: added the scaled actions below instead
-			// TODO: why does this change the movement speed???
-            inputForce  = new Vector3(actions.ContinuousActions[0], actions.ContinuousActions[1], actions.ContinuousActions[2]);
-            inputTorque = new Vector3(actions.ContinuousActions[3], actions.ContinuousActions[4], actions.ContinuousActions[5]);
-            
-            //float moveRotate = actions.ContinuousActions[0]; // X-axis rotation -1 - +1
-            //float moveForward = actions.ContinuousActions[1]; // Z-axis movement -1 - +1
-            //float moveVertical = actions.ContinuousActions[2]; // Y-axis movement -1 - +1
-        
-            // Forward/backward movement
-            //mainBody.MovePosition(rb.position + transform.forward * moveForward * moveSpeed * Time.deltaTime);
-            // Vertical movement (up/down)
-            //rb.MovePosition(rb.position + Vector3.up * moveVertical * moveSpeed * Time.deltaTime);
-            // Rotation
-            //transform.Rotate(0f, moveRotate * moveSpeed, 0f, Space.Self);
-        }
-        // Teleop
-        public override void Heuristic(in ActionBuffers actionsOut)
-        {
-            ActionSegment<float> continuousActions = actionsOut.ContinuousActions;
-            //continuousActions[0] = Input.GetAxisRaw("Horizontal");
-            //continuousActions[1] = Input.GetAxisRaw("Vertical");
-            
-            // TODO: would be clean if this only sets a force and that is then applied elsewhere
-            // Reset input forces every fixed update
-            //Vector3 inputForce = Vector3.zero;
-            //Vector3 inputTorque = Vector3.zero;
-            // Keyboard controlls
-            if (Input.GetKey(KeyCode.W))
-            {
-                inputForce[2] += 86;
-            }
-
-            if (Input.GetKey(KeyCode.A))
-            {
-                inputForce[0] -= 85;
-            }
-
-            if (Input.GetKey(KeyCode.S))
-            {
-                inputForce[2] -= 85;
-            }
-
-            if (Input.GetKey(KeyCode.D))
-            {
-                inputForce[0] += 85;
-            }
-
-            if (Input.GetKey(KeyCode.Space))
-            {
-                inputForce[1] += 122;
-            }
-
-            if (Input.GetKey(KeyCode.LeftShift))
-            {
-                inputForce[1] -= 122;
-            }
-
-            if (Input.GetKey(KeyCode.Q))
-            {
-                inputTorque[1] -= 14;
-            }
-
-            if (Input.GetKey(KeyCode.E))
-            {
-                inputTorque[1] += 14;
-            }
-
-            if (Input.GetKey(KeyCode.X))
-            {
-                inputTorque[0] += 14;
-            }
-
-            if (Input.GetKey(KeyCode.C))
-            {
-                inputTorque[2] += 14;
-            }
-            // Forces
-            continuousActions[0] = inputForce[0];
-            continuousActions[1] = inputForce[1];
-            continuousActions[2] = inputForce[2];
-            // Torques
-            continuousActions[3] = inputTorque[0];
-            continuousActions[4] = inputTorque[1];
-            continuousActions[5] = inputTorque[2];
-        }
-		// TODOS: 3. inför reward system varje check point (se videon för det)
-        // Collision handeling, and rewards
-        private void OnTriggerEnter(Collider other)
-        {
-			// Try to get the CheckpointData component from the collider.
-    		CheckpointSingle cpData = other.GetComponent<CheckpointSingle>();
-    		if (cpData != null)
-    		{
-				Debug.Log("CHECKPOINT INDEX: " + cpData.checkpointIndex);
-				Debug.Log("CORRECT INDEX: " + iNextGate);
-        		// Optionally, verify the checkpoint order.
-        		if (cpData.checkpointIndex == iNextGate)
-        		{
-				Debug.Log("RÄTT ORDNING");
-                AddReward(10f);
-				// Move to the next gate TODO: test if this logic works
-				// TODO: make sure they are in order
-				iNextGate = (iNextGate + 1) % (gatePositions.Count+1); // TODO: remake so gate numbers starts from 0 instead of 1. then gatePos.count+1 not needed, only gatePos.count
-				if (iNextGate == 0) { iNextGate = 1; } // Restart. TODO: modulus. GÖR SÅ DOM STARTAR PÅ 0! SLIPPER DENNA OCH PLUS 1 PÅ COUNT!
-				
-				next2Gates[0] = next2Gates[1];
-				next2Gates[1] = gatePositions[iNextGate];
-            	}else{
-				// TODO: fix so that it doesnt give this multiple times when passing through
-				// Wrong order!
-				Debug.Log("FEL ORDNING");
-				AddReward(-1f);
-				}
-			}
-            if (other.gameObject.tag == "Wall")
-            {
-                AddReward(-5f);
-                EndEpisode();
-            }
         }
     }
 }
