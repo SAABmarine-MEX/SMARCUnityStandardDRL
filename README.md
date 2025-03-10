@@ -5,7 +5,7 @@ This project has all of the dependencies configured and installed in order to sh
 
 ## SAABmarine
 
-This is the SMARC Unity Standard project with additional features for SAABmarine. The purpose of these features is to create a simulation for the BlueROV2 heavy configuration. If you wish to run the exact setup as during the hk-demo, set both this repo and the Assets repo (SMARCUnityAssets) to branch `hk-demo`. TODO: the missing prefab is the plane from the hk-demo, currently only localy saved on Alan computer.
+This is the SMARC Unity Standard project with additional features for SAABmarine. The purpose of these features is to create a simulation for the BlueROV2 heavy configuration. If you wish to run the exact setup as during the hk-demo, set both this repo and the Assets repo (SMARCUnityAssets) to branch `hk-demo`.
 
 ## New to Unity?
 

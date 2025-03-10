@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "com.frj.unity-sensors": "https://github.com/Field-Robotics-Japan/UnitySensors.git?path=/Assets/UnitySensors#v2.0.5",
-    "com.frj.unity-sensors-ros": "https://github.com/Field-Robotics-Japan/UnitySensors.git?path=/Assets/UnitySensorsROS#v2.0.5",
+    "com.frj.unity-sensors": "https://github.com/martkartasev/UnitySensors.git?path=/Assets/UnitySensors#v2.0.5",
+    "com.frj.unity-sensors-ros": "https://github.com/martkartasev/UnitySensors.git?path=/Assets/UnitySensorsROS#v2.0.5",
     "com.github-glitchenzo.nugetforunity": "https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity",
     "com.smarc.assets": "file:../../SMARCUnityAssets",
     "com.unity.ai.navigation": "2.0.5",
