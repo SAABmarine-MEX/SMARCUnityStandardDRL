@@ -100,6 +100,10 @@ namespace DefaultNamespace
         double I_x = 0.2818; // [kg*m^2], from OSBS's CAD
         double I_y = 0.245; // [kg*m^2], from OSBS's CAD
         double I_z = 0.3852; // [kg*m^2], from OSBS's CAD
+
+
+		// TODO: init here 
+		//var inverseTransformDirection mainBody.transform.InverseTransformDirection(mainBody.linearVelocity);
         void Start()
         {
             // Get all propeller components
@@ -166,8 +170,8 @@ namespace DefaultNamespace
             //mainBody.angularVelocity = Vector3.zero;
 			//mainBody.transform.position = new Vector3(-1.5f, -1f, -0.8f);
         	//mainBody.anchorPosition = new Vector3(-1.5f, -1f, -0.8f);
-			Vector3 localPosition = new Vector3(-1.5f, -1f, -0.8f);
-			Quaternion loaclRotation = Quaternion.Euler(0, -90, 0);
+			Vector3 localPosition = new Vector3(0f, 0f, 0f);
+			Quaternion loaclRotation = Quaternion.Euler(0, 0, 0);
 
 			// Convert to world-space using the parent's transform
 			Transform parentTransform = transform.parent;
@@ -536,25 +540,34 @@ namespace DefaultNamespace
 	        Vector3 currentRotation = transform.localRotation.eulerAngles;
 	        sensor.AddObservation(currentPosition);
 	        sensor.AddObservation(currentRotation);
+     
 
-	        // --- Linear Velocity ---
-	        Vector3 deltaPosition = currentPosition - lastPosition;
-	        Vector3 estimatedVelocity = deltaPosition / Time.fixedDeltaTime;
-	        sensor.AddObservation(estimatedVelocity);
-
-	        // --- Angular Velocity in Euler Angles (deg/s) ---
-	        // Calculate the change in rotation for each axis using DeltaAngle to account for wrap-around
-	        float deltaX = Mathf.DeltaAngle(lastRotation.x, currentRotation.x);
-	        float deltaY = Mathf.DeltaAngle(lastRotation.y, currentRotation.y);
-	        float deltaZ = Mathf.DeltaAngle(lastRotation.z, currentRotation.z);        
-	        // Compute the angular velocity in degrees per second
-	        Vector3 angularVelocity = new Vector3(deltaX, deltaY, deltaZ) / Time.fixedDeltaTime;
-	        // Add the angular velocity as an observation
-	        sensor.AddObservation(angularVelocity);
-        
-	        // Update for next frame
-	        lastPosition = currentPosition;
-	        lastRotation = currentRotation;
+			// ---Get vels--- 
+			// Get world rotation
+            var world_rot = mainBody.transform.rotation.eulerAngles; 
+            var world_pos = mainBody.transform.position; 
+            
+            // Get and convert state vector from global to local reference point
+            var inverseTransformDirection = mainBody.transform.InverseTransformDirection(mainBody.linearVelocity); // Local frame vel
+            var transformAngularVelocity = mainBody.transform.InverseTransformDirection(mainBody.angularVelocity); // Local frame angular vel (gives negative velocities)
+            
+            // Convert angles, angular velocities and velocities to OSBS coordinate system
+            Vector<double> uvw = inverseTransformDirection.To<NED>().ToDense(); // Might need to revisit. Rel. velocity in point m block.
+			// Convert to Unity's Vector3
+			Vector3 uvw_vec = new UnityEngine.Vector3(
+    			(float)uvw[0], 
+    			(float)uvw[1], 
+    			(float)uvw[2]
+			);
+			sensor.AddObservation(uvw_vec);
+            Vector<double> pqr = FRD.ConvertAngularVelocityFromRUF(transformAngularVelocity).ToDense(); // FRD is same as NED for ANGLES ONLY
+			Vector3 pqr_vec = new UnityEngine.Vector3(
+    			(float)pqr[0], 
+    			(float)pqr[1], 
+    			(float)pqr[2]
+			);
+			sensor.AddObservation(pqr_vec);
+		
         }
         
         // What actions the agent can preform
@@ -607,7 +620,7 @@ namespace DefaultNamespace
 			
 			// TODO: added the scaled actions below instead
 			// TODO: why does this change the movement speed???
-            inputForce  = new Vector3(actions.ContinuousActions[0], actions.ContinuousActions[1], actions.ContinuousActions[2]);
+            inputForce  = new Vector3(actions.ContinuousActions[0], actions.ContinuousActions[1], actions.ContinuousActions[2]*1.5f); // 1.5 more force in x for simple res dyn test
             inputTorque = new Vector3(actions.ContinuousActions[3], actions.ContinuousActions[4], actions.ContinuousActions[5]);
             
             //float moveRotate = actions.ContinuousActions[0]; // X-axis rotation -1 - +1

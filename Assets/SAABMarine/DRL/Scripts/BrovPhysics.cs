@@ -49,7 +49,7 @@ namespace DefaultNamespace
         private Vector3 camera_offset;
         public bool Ardusub_mode;
         public bool Arusub_prep;
-        public bool Controller_mode = true;
+        //public bool Controller_mode = true;
         
         //Constants
         public double vbs = 0.0f; //some weird thing
@@ -151,6 +151,7 @@ namespace DefaultNamespace
         {
             return transform.localRotation;
         }
+		// TODO: make a method that gives the full state combining the above
         public Vector3 GetForwardUnitVec() { return transform.forward; }
 
         public void SetInput(Vector3 force, Vector3 torque)
